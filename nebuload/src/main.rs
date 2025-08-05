@@ -38,11 +38,14 @@ fn main() -> uefi::Status {
         .wait_for_key_event()
         .expect("Failed to create key event");
 
-    for i in 0..5 {
-        info!("Reading {} more key event(s)...", 5 - i);
+    let mut keys_remaining = 5;
+    info!("Reading {} key events...", keys_remaining);
+    while keys_remaining > 0 {
         let input = stdin.read_key().expect("Failed to read key");
         if let Some(key) = input {
             info!("Key pressed: {:?}", key);
+            keys_remaining -= 1;
+            info!("Reading {} more key event(s)...", keys_remaining);
         }
     }
 
