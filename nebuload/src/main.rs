@@ -25,7 +25,7 @@ fn main() -> uefi::Status {
         }
     };
 
-    let stdin = match open_protocol_exclusive::<InputProtocol>(handle) {
+    let mut stdin = match open_protocol_exclusive::<InputProtocol>(handle) {
         Ok(v) => v,
         Err(e) => {
             error!("Failed to open Input protocol exclusively: {}", e);
@@ -37,6 +37,14 @@ fn main() -> uefi::Status {
     let key_event = stdin
         .wait_for_key_event()
         .expect("Failed to create key event");
+
+    for i in 0..5 {
+        info!("Reading {} more key event(s)...", 5 - i);
+        let input = stdin.read_key().expect("Failed to read key");
+        if let Some(key) = input {
+            info!("Key pressed: {:?}", key);
+        }
+    }
 
     info!("Waiting for a key event...");
 
