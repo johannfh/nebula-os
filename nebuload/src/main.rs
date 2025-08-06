@@ -79,6 +79,11 @@ fn main() -> Status {
     let mut gop = open_protocol_exclusive::<GraphicsOutput>(gop_handle)
         .expect("Failed to open Graphics Output protocol");
 
+    info!("Graphics Output Protocol opened successfully!");
+
+
+    info!("Resolution: {:?}", gop.current_mode_info().resolution());
+
     // Stall for 10 seconds
     stall(10_000_000);
 
