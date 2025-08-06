@@ -8,12 +8,12 @@ use alloc::vec::Vec;
 
 use log::info;
 use uefi::{
-    Handle as UefiHandle, Result as UefiResult,
+    Handle, Result as UefiResult, Status,
     boot::{self, get_handle_for_protocol, open_protocol_exclusive, stall},
     helpers,
     proto::console::{
         gop::{BltOp, BltPixel, BltRegion, GraphicsOutput},
-        text::Input as InputProtocol,
+        text::Input,
     },
 };
 
@@ -60,24 +60,23 @@ impl Buffer {
 }
 
 #[uefi::entry]
-fn main() -> uefi::Status {
+fn main() -> Status {
     // Initialize UEFI services
     helpers::init().unwrap();
 
     // Test printing something to the UEFI console
     info!("Hello, UEFI World!");
 
-    let stdin_handle: UefiHandle = get_handle_for_protocol::<InputProtocol>()
-        .expect("Failed to get handle for Input protocol");
+    let stdin_handle: Handle =
+        get_handle_for_protocol::<Input>().expect("Failed to get handle for Input protocol");
 
-    let mut stdin = open_protocol_exclusive::<InputProtocol>(stdin_handle)
-        .expect("Failed to open Input protocol");
+    let mut stdin =
+        open_protocol_exclusive::<Input>(stdin_handle).expect("Failed to open Input protocol");
 
-    let gop_handle: UefiHandle =
-        get_handle_for_protocol::<uefi::proto::console::gop::GraphicsOutput>()
-            .expect("Failed to get handle for Graphics Output protocol");
+    let gop_handle: Handle = get_handle_for_protocol::<GraphicsOutput>()
+        .expect("Failed to get handle for Graphics Output protocol");
 
-    let mut gop = open_protocol_exclusive::<uefi::proto::console::gop::GraphicsOutput>(gop_handle)
+    let mut gop = open_protocol_exclusive::<GraphicsOutput>(gop_handle)
         .expect("Failed to open Graphics Output protocol");
 
     // Stall for 10 seconds
@@ -127,5 +126,5 @@ fn main() -> uefi::Status {
     uefi::boot::stall(30_000_000);
 
     // Exit the application successfully!
-    uefi::Status::SUCCESS
+    Status::SUCCESS
 }
