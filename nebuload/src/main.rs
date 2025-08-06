@@ -1,13 +1,63 @@
 #![no_std]
 #![no_main]
 
-use log::{error, info};
+#[macro_use]
+extern crate alloc;
+
+use alloc::vec::Vec;
+
+use log::info;
 use uefi::{
-    Handle as UefiHandle,
-    boot::{self, get_handle_for_protocol, open_protocol_exclusive},
+    Handle as UefiHandle, Result as UefiResult,
+    boot::{self, get_handle_for_protocol, open_protocol_exclusive, stall},
     helpers,
-    proto::console::text::Input as InputProtocol,
+    proto::console::{
+        gop::{BltOp, BltPixel, BltRegion, GraphicsOutput},
+        text::Input as InputProtocol,
+    },
 };
+
+struct Buffer {
+    width: usize,
+    height: usize,
+    pixels: Vec<BltPixel>,
+}
+
+impl Buffer {
+    fn new(width: usize, height: usize) -> Self {
+        let pixels = vec![BltPixel::new(0, 0, 0); width * height];
+        Buffer {
+            width,
+            height,
+            pixels,
+        }
+    }
+
+    fn pixel(&mut self, x: usize, y: usize) -> Option<&mut BltPixel> {
+        self.pixels.get_mut(y * self.width + x)
+    }
+
+    fn blit(&mut self, gop: &mut GraphicsOutput) -> UefiResult {
+        gop.blt(BltOp::BufferToVideo {
+            buffer: &self.pixels,
+            src: BltRegion::Full,
+            dest: (0, 0),
+            dims: (self.width, self.height),
+        })
+    }
+
+    fn blit_pixel(&mut self, gop: &mut GraphicsOutput, coords: (usize, usize)) -> UefiResult {
+        gop.blt(BltOp::BufferToVideo {
+            buffer: &self.pixels,
+            src: BltRegion::SubRectangle {
+                coords: coords,
+                px_stride: self.width,
+            },
+            dest: coords,
+            dims: (1, 1),
+        })
+    }
+}
 
 #[uefi::entry]
 fn main() -> uefi::Status {
@@ -17,26 +67,36 @@ fn main() -> uefi::Status {
     // Test printing something to the UEFI console
     info!("Hello, UEFI World!");
 
-    let handle: UefiHandle = match get_handle_for_protocol::<InputProtocol>() {
-        Ok(v) => v,
-        Err(e) => {
-            error!("Failed to get handle for Input protocol: {}", e);
-            return e.status();
-        }
-    };
+    let stdin_handle: UefiHandle = get_handle_for_protocol::<InputProtocol>()
+        .expect("Failed to get handle for Input protocol");
 
-    let mut stdin = match open_protocol_exclusive::<InputProtocol>(handle) {
-        Ok(v) => v,
-        Err(e) => {
-            error!("Failed to open Input protocol exclusively: {}", e);
-            return e.status();
-        }
-    };
+    let mut stdin = open_protocol_exclusive::<InputProtocol>(stdin_handle)
+        .expect("Failed to open Input protocol");
 
-    // create a key event to wait for
-    let key_event = stdin
-        .wait_for_key_event()
-        .expect("Failed to create key event");
+    let gop_handle: UefiHandle =
+        get_handle_for_protocol::<uefi::proto::console::gop::GraphicsOutput>()
+            .expect("Failed to get handle for Graphics Output protocol");
+
+    let mut gop = open_protocol_exclusive::<uefi::proto::console::gop::GraphicsOutput>(gop_handle)
+        .expect("Failed to open Graphics Output protocol");
+
+    // Stall for 10 seconds
+    stall(10_000_000);
+
+    let (width, height) = gop.current_mode_info().resolution();
+    let mut buffer = Buffer::new(width as usize, height as usize);
+    buffer
+        .blit(&mut gop)
+        .expect("Failed to blit buffer to video");
+
+    let tl_pixel = buffer.pixel(0, 0).expect("Failed to get top-left pixel");
+    tl_pixel.red = 255; // Set red channel to 255
+    buffer
+        .blit_pixel(&mut gop, (0, 0))
+        .expect("Failed to blit pixel at (0, 0)");
+
+    // Stall for 10 seconds
+    stall(10_000_000);
 
     let mut keys_remaining = 5;
     info!("Reading {} key events...", keys_remaining);
@@ -48,6 +108,11 @@ fn main() -> uefi::Status {
             info!("Reading {} more key event(s)...", keys_remaining);
         }
     }
+
+    // create a key event to wait for
+    let key_event = stdin
+        .wait_for_key_event()
+        .expect("Failed to create key event");
 
     info!("Waiting for a key event...");
 
