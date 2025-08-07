@@ -5,6 +5,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
+use core::slice::IterMut;
 
 use log::info;
 use uefi::{
@@ -33,7 +34,11 @@ impl Buffer {
         }
     }
 
-    fn pixel(&mut self, x: usize, y: usize) -> Option<&mut BltPixel> {
+    fn pixel(&self, x: usize, y: usize) -> Option<&BltPixel> {
+        self.pixels.get(y * self.width + x)
+    }
+
+    fn pixel_mut(&mut self, x: usize, y: usize) -> Option<&mut BltPixel> {
         self.pixels.get_mut(y * self.width + x)
     }
 
@@ -50,12 +55,74 @@ impl Buffer {
         gop.blt(BltOp::BufferToVideo {
             buffer: &self.pixels,
             src: BltRegion::SubRectangle {
-                coords: coords,
+                coords,
                 px_stride: self.width,
             },
             dest: coords,
             dims: (1, 1),
         })
+    }
+
+    fn blit_region(
+        &mut self,
+        gop: &mut GraphicsOutput,
+        coords: (usize, usize),
+        dims: (usize, usize),
+    ) -> UefiResult {
+        gop.blt(BltOp::BufferToVideo {
+            buffer: &self.pixels,
+            src: BltRegion::SubRectangle {
+                coords,
+                px_stride: self.width,
+            },
+            dest: coords,
+            dims,
+        })
+    }
+}
+
+struct RegionIter<'a> {
+    // -- The buffer containing the pixels --
+    buffer: &'a [BltPixel],
+
+    // -- Dimensions of the buffer --
+    buffer_width: usize,
+    buffer_height: usize,
+
+    // -- Starting coordinates for the region --
+    start_x: usize,
+    start_y: usize,
+
+    // -- Dimensions of the region to iterate over --
+    width: usize,
+    height: usize,
+
+    // -- Current coordinates in the iteration --
+    x: usize,
+    y: usize,
+}
+
+impl<'a> Iterator for RegionIter<'a> {
+    type Item = &'a BltPixel;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Check if the current position is within bounds
+        if self.x >= self.start_x + self.width || self.x > self.buffer_width {
+            self.x = self.start_x;
+            self.y += 1;
+        }
+
+        if self.y >= self.height {
+            return None; // No more pixels to iterate
+        }
+
+        // Get the pixel at the current position
+        let pixel = self.buffer.get(self.y * self.buffer_width + self.x);
+
+        // Move to the next pixel
+        self.x += 1;
+
+        pixel
     }
 }
 
@@ -79,25 +146,23 @@ fn main() -> Status {
     let mut gop = open_protocol_exclusive::<GraphicsOutput>(gop_handle)
         .expect("Failed to open Graphics Output protocol");
 
-    info!("Graphics Output Protocol opened successfully!");
-
-
-    info!("Resolution: {:?}", gop.current_mode_info().resolution());
-
-    // Stall for 10 seconds
-    stall(10_000_000);
-
     let (width, height) = gop.current_mode_info().resolution();
     let mut buffer = Buffer::new(width as usize, height as usize);
     buffer
         .blit(&mut gop)
         .expect("Failed to blit buffer to video");
 
-    let tl_pixel = buffer.pixel(0, 0).expect("Failed to get top-left pixel");
+    let tl_pixel = buffer
+        .pixel_mut(0, 0)
+        .expect("Failed to get top-left pixel");
     tl_pixel.red = 255; // Set red channel to 255
     buffer
         .blit_pixel(&mut gop, (0, 0))
         .expect("Failed to blit pixel at (0, 0)");
+
+    let coords = (50, 50);
+    let dims = (250, 250);
+
 
     // Stall for 10 seconds
     stall(10_000_000);
