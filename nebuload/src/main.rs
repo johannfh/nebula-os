@@ -1,8 +1,18 @@
 #![no_std]
 #![no_main]
 
-use fontdue::Font;
-use uefi::{Status, boot::get_handle_for_protocol, helpers, proto::console::text::Output};
+use alloc::string::String;
+use fontdue::{
+    Font,
+    layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle},
+};
+use nebula_uefi_graphics::screen::Screen;
+use uefi::{
+    Status,
+    boot::{get_handle_for_protocol, open_protocol_exclusive},
+    helpers, print,
+    proto::console::{gop::GraphicsOutput, text::Output},
+};
 
 use crate::utils::read_file_from_esp;
 
@@ -18,8 +28,8 @@ fn main() -> Status {
 
     let stdout_handle =
         get_handle_for_protocol::<Output>().expect("Failed to get handle for Output protocol");
-    let mut stdout = uefi::boot::open_protocol_exclusive::<Output>(stdout_handle)
-        .expect("Failed to open Output protocol");
+    let mut stdout =
+        open_protocol_exclusive::<Output>(stdout_handle).expect("Failed to open Output protocol");
 
     stdout.clear().expect("Failed to clear console");
 
@@ -40,8 +50,52 @@ fn main() -> Status {
         font.name().expect("Font has no name")
     );
 
+    log::info!("Switching to custom rendering...");
+    uefi::boot::stall(1_000_000);
+
+    let gop_handle = get_handle_for_protocol::<GraphicsOutput>()
+        .expect("Failed to get handle for GraphicsOutput protocol");
+
+    let mut gop = open_protocol_exclusive::<GraphicsOutput>(gop_handle)
+        .expect("Failed to open GraphicsOutput protocol");
+
+    let (width, height) = gop.current_mode_info().resolution();
+
+    let mut screen = Screen::new(width, height);
+    screen.blit(&mut gop).expect("Failed to blit screen");
+
+    let text = "Hello, UEFI World!";
+
+    let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
+
+    layout.reset(&LayoutSettings {
+        line_height: 32.0,
+        ..LayoutSettings::default()
+    });
+
+    layout.append(&[font.clone()], &TextStyle::new(text, 32.0, 0));
+
+    for (i, char) in text.chars().enumerate() {
+        let (metrics, bitmap) = font.rasterize(char, 32.0);
+        screen
+            .draw_char(
+                &mut gop,
+                bitmap,
+                (i * 32 + metrics.xmin as usize, (50 + metrics.ymin) as usize),
+                (metrics.width, metrics.height),
+            )
+            .expect("Failed to draw character");
+        log::info!(
+            "Rendered character '{}' at position ({}, 0)\n",
+            char,
+            i * metrics.width
+        );
+    }
+
+    screen.blit(&mut gop).expect("Failed to blit screen");
+
     // Stall for 10 seconds
-    uefi::boot::stall(10_000_000);
+    uefi::boot::stall(30_000_000);
     log::info!("Shutting down...");
     uefi::boot::stall(1_000_000);
 

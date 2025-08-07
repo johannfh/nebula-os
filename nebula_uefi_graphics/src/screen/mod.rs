@@ -1,5 +1,6 @@
 use core::ops::{Deref, DerefMut};
 
+use alloc::vec::Vec;
 use nebula_core::buffer::Buffer;
 
 use uefi::{
@@ -81,6 +82,29 @@ impl Screen {
         self.region_mut(coords, dims).for_each(|pixel| {
             *pixel = color;
         });
+
+        self.blit_region(gop, coords, dims)
+    }
+
+    pub fn draw_char(
+        &mut self,
+        gop: &mut GraphicsOutput,
+        bitmap: Vec<u8>,
+        coords: (usize, usize),
+        dims: (usize, usize),
+    ) -> UefiResult {
+        let (x, y) = coords;
+        let (width, _height) = dims;
+
+        for (i, pixel) in bitmap.iter().enumerate() {
+            let char_x = x + (i % width);
+            let char_y = y + (i / width);
+            if char_x < self.width && char_y < self.height {
+                if let Some(blt) = self.buffer.pixel_mut(char_x, char_y) {
+                    *blt = BltPixel::new(*pixel, *pixel, *pixel);
+                }
+            }
+        }
 
         self.blit_region(gop, coords, dims)
     }
