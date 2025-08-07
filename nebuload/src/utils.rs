@@ -1,4 +1,3 @@
-use ttf_parser::Face;
 use uefi::{
     CStr16,
     boot::{get_handle_for_protocol, open_protocol_exclusive},

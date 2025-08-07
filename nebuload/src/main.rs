@@ -1,14 +1,15 @@
 #![no_std]
 #![no_main]
 
-mod utils;
-
+use fontdue::Font;
 use uefi::{Status, boot::get_handle_for_protocol, helpers, proto::console::text::Output};
 
 use crate::utils::read_file_from_esp;
 
 #[macro_use]
 extern crate alloc;
+
+mod utils;
 
 #[uefi::entry]
 fn main() -> Status {
@@ -30,6 +31,13 @@ fn main() -> Status {
     log::info!(
         "Successfully read font file from ESP, size: {} bytes",
         otf_data.len()
+    );
+
+    let font = Font::from_bytes(otf_data.as_slice(), fontdue::FontSettings::default())
+        .expect("Failed to parse font data");
+    log::info!(
+        "Font loaded successfully! {}",
+        font.name().expect("Font has no name")
     );
 
     // Stall for 10 seconds
