@@ -1,3 +1,4 @@
+use ttf_parser::Face;
 use uefi::{
     CStr16,
     boot::{get_handle_for_protocol, open_protocol_exclusive},
@@ -7,7 +8,16 @@ use uefi::{
     },
 };
 
-pub fn load_font(filepath: &str) {
+use alloc::vec::Vec;
+
+/// Reads a font file from the ESP (EFI System Partition) and returns its contents in a buffer.
+/// # Arguments
+/// * `filepath` - The path to the font file in the ESP, e.g., `\\data\\some.cfg`.
+/// # Returns
+/// A `Vec<u8>` containing the contents of the font file.
+/// # Panics
+/// All the time...
+pub fn read_file_from_esp(filepath: &str) -> Vec<u8> {
     // Convert the filepath to a CStr16 format
     assert!(
         filepath.len() < 256,
@@ -17,17 +27,14 @@ pub fn load_font(filepath: &str) {
     let filepath = CStr16::from_str_with_buf(filepath, &mut cstr_buffer)
         .expect("Failed to convert filepath to CStr16");
 
-    log::info!("Loading font from path: {}", filepath);
-
     // Load the font file from the specified path
-    let sfs_handle =
-        get_handle_for_protocol::<SimpleFileSystem>().expect("Failed to read font file");
+    let sfs_handle = get_handle_for_protocol::<SimpleFileSystem>()
+        .expect("Failed to get handle for SimpleFileSystem protocol");
 
     let mut sfs_proto = open_protocol_exclusive::<SimpleFileSystem>(sfs_handle)
-        .expect("Failed to open Simple File System protocol");
+        .expect("Failed to open SimpleFileSystem protocol");
 
     let mut root = sfs_proto.open_volume().expect("Failed to open ESP volume");
-    log::info!("Opened ESP volume successfully");
 
     let file_handle = root
         .open(filepath, FileMode::Read, FileAttribute::empty())
@@ -46,9 +53,23 @@ pub fn load_font(filepath: &str) {
 
     let mut file_info_buf = [0u8; 1024];
 
-    let info = file
+    let file_info = file
         .get_info::<FileInfo>(&mut file_info_buf)
         .expect("Failed to get file info");
 
-    log::info!("File Size of {}: {}", info.file_name(), info.file_size());
+    let mut file_buffer = vec![0u8; file_info.file_size() as usize];
+
+    let bytes_read = file
+        .read(&mut file_buffer)
+        .expect("Failed to read font file into buffer");
+
+    assert_eq!(
+        bytes_read,
+        file_info.file_size() as usize,
+        "Read size does not match file size: {} != {}",
+        bytes_read,
+        file_info.file_size() as usize
+    );
+
+    file_buffer
 }
