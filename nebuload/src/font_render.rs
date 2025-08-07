@@ -30,7 +30,7 @@ pub fn load_font(filepath: &str) {
     log::info!("Opened ESP volume successfully");
 
     let file_handle = root
-        .open(filepath, FileMode::Read, FileAttribute::READ_ONLY)
+        .open(filepath, FileMode::Read, FileAttribute::empty())
         .expect("Failed to open font file");
 
     if file_handle
