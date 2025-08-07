@@ -6,5 +6,6 @@ edition = "2024"
 [dependencies]
 log = "0.4.27"
 uefi = { version = "0.35.0", features = ["global_allocator", "logger", "panic_handler"] }
+ttf-parser = { version = "0.25.1", default-features = false, features = ["no-std-float", "opentype-layout"] }
 nebula_uefi_graphics = { path = "../nebula_uefi_graphics" }
 

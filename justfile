@@ -14,6 +14,8 @@ build: clean
     @echo -e "\e[1;94m--- Building project ---\e[0m"
     @echo -e "\e[92mCreating ESP directory structure\e[0m"
     mkdir -p esp/efi/boot
+    @echo -e "\e[92mCopying Font files to ESP\e[0m"
+    cp -r fonts esp/fonts
     @echo -e "\e[92mBuilding Nebuload (Bootloader) EFI application\e[0m"
     cargo build --manifest-path nebuload/Cargo.toml --target x86_64-unknown-uefi
     @echo -e "\e[92mCopying Nebuload EFI application to ESP\e[0m"
