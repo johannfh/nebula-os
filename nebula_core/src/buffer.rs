@@ -1,37 +1,42 @@
 use alloc::vec::Vec;
 
-use uefi::{
-    Result as UefiResult,
-    proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput},
-};
-
-pub struct Buffer {
+pub struct Buffer<T> {
+    /// The width of the buffer in pixels.
     width: usize,
+    /// The height of the buffer in pixels.
     height: usize,
-    pixels: Vec<BltPixel>,
+    /// The internal buffer containing the data.
+    inner: Vec<T>,
 }
 
-impl Buffer {
-    pub fn new(width: usize, height: usize) -> Self {
-        let pixels = vec![BltPixel::new(0, 0, 0); width * height];
+impl<T> Buffer<T>
+where
+    T: Clone + Copy,
+{
+    pub fn new<F>(width: usize, height: usize, fill: F) -> Self
+    where
+        F: Into<T>,
+    {
+        let fill: T = fill.into();
+        let inner = vec![fill.clone(); width * height];
         Buffer {
             width,
             height,
-            pixels,
+            inner,
         }
     }
 
     #[allow(unused)]
-    pub fn pixel(&self, x: usize, y: usize) -> Option<&BltPixel> {
-        self.pixels.get(y * self.width + x)
+    pub fn pixel(&self, x: usize, y: usize) -> Option<&T> {
+        self.inner.get(y * self.width + x)
     }
 
-    pub fn pixel_mut(&mut self, x: usize, y: usize) -> Option<&mut BltPixel> {
-        self.pixels.get_mut(y * self.width + x)
+    pub fn pixel_mut(&mut self, x: usize, y: usize) -> Option<&mut T> {
+        self.inner.get_mut(y * self.width + x)
     }
 
     #[inline]
-    pub fn region_mut(&mut self, coords: (usize, usize), dims: (usize, usize)) -> RegionIterMut {
+    pub fn region_mut(&mut self, coords: (usize, usize), dims: (usize, usize)) -> RegionIterMut<T> {
         let (start_x, start_y) = coords;
         let (width, height) = dims;
 
@@ -41,7 +46,7 @@ impl Buffer {
         assert!(start_y + height <= self.height);
 
         RegionIterMut {
-            buffer: &mut self.pixels,
+            buffer: &mut self.inner,
             buffer_width: self.width,
             buffer_height: self.height,
             start_x,
@@ -54,9 +59,21 @@ impl Buffer {
     }
 
     #[inline]
+    pub fn width(&self) -> usize {
+        self.width
+    }
+
+    #[inline]
+    pub fn height(&self) -> usize {
+        self.height
+    }
+
+    /* TODO: Abstract the following logic away into a super type / wrapper around GraphicsOutput
+
+    #[inline]
     pub fn blit(&mut self, gop: &mut GraphicsOutput) -> UefiResult {
         gop.blt(BltOp::BufferToVideo {
-            buffer: &self.pixels,
+            buffer: &self.inner,
             src: BltRegion::Full,
             dest: (0, 0),
             dims: (self.width, self.height),
@@ -66,7 +83,7 @@ impl Buffer {
     #[inline]
     pub fn blit_pixel(&mut self, gop: &mut GraphicsOutput, coords: (usize, usize)) -> UefiResult {
         gop.blt(BltOp::BufferToVideo {
-            buffer: &self.pixels,
+            buffer: &self.inner,
             src: BltRegion::SubRectangle {
                 coords,
                 px_stride: self.width,
@@ -84,7 +101,7 @@ impl Buffer {
         dims: (usize, usize),
     ) -> UefiResult {
         gop.blt(BltOp::BufferToVideo {
-            buffer: &self.pixels,
+            buffer: &self.inner,
             src: BltRegion::SubRectangle {
                 coords,
                 px_stride: self.width,
@@ -107,12 +124,12 @@ impl Buffer {
         });
 
         self.blit(gop)
-    }
+    }*/
 }
 
-pub struct RegionIterMut<'a> {
+pub struct RegionIterMut<'a, T> {
     // -- The buffer containing the pixels --
-    buffer: &'a mut [BltPixel],
+    buffer: &'a mut [T],
 
     // -- Dimensions of the buffer --
     buffer_width: usize,
@@ -131,8 +148,8 @@ pub struct RegionIterMut<'a> {
     y: usize,
 }
 
-impl<'a> Iterator for RegionIterMut<'a> {
-    type Item = &'a mut BltPixel;
+impl<'a, T> Iterator for RegionIterMut<'a, T> {
+    type Item = &'a mut T;
 
     fn next(&mut self) -> Option<Self::Item> {
         // If we've reached the vertical end of the region, return `None`
@@ -163,11 +180,44 @@ impl<'a> Iterator for RegionIterMut<'a> {
             self.y += 1;
         }
 
-        // Get the pixel at the current coordinates
+        // Get the item at the current coordinates
         // NOTE: We use raw pointer arithmetic to circumvent Rust's borrow checker
         let buf_ptr = self.buffer.as_mut_ptr();
         // SAFETY: We ensure that the index is within bounds and the buffer is valid.
-        let pixel = unsafe { buf_ptr.add(index).as_mut() };
-        return pixel;
+        unsafe { buf_ptr.add(index).as_mut() }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_buffer_creation() {
+        let buffer = Buffer::<u8>::new(10, 10, 0);
+        assert_eq!(buffer.width, 10);
+        assert_eq!(buffer.height, 10);
+        assert_eq!(buffer.inner.len(), 100);
+    }
+
+    #[test]
+    fn test_pixel_access() {
+        let mut buffer = Buffer::<u8>::new(10, 10, 0);
+        *buffer.pixel_mut(5, 5).unwrap() = 42;
+        assert_eq!(*buffer.pixel(5, 5).unwrap(), 42);
+    }
+
+    #[test]
+    fn test_region_mut() {
+        let mut buffer = Buffer::<u8>::new(10, 10, 0);
+        buffer.region_mut((2, 2), (3, 3)).for_each(|pixel| {
+            *pixel = 1;
+        });
+
+        for y in 2..5 {
+            for x in 2..5 {
+                assert_eq!(*buffer.pixel(x, y).unwrap(), 1);
+            }
+        }
     }
 }

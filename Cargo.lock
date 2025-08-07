@@ -35,6 +35,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nebula_core"
+version = "0.1.0"
+
+[[package]]
 name = "nebuload"
 version = "0.1.0"
 dependencies = [
