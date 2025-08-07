@@ -15,7 +15,7 @@ fn main() -> Status {
     // Test printing something to the UEFI console
     log::info!("Hello, UEFI World!");
 
-    load_font("fonts/ajn-tanmatsuki/ajn-tanmatsuki.otf");
+    load_font("\\fonts\\ajn-tanmatsuki\\ajn-tanmatsuki.otf");
 
     // Stall for 30 seconds
     uefi::boot::stall(30_000_000);

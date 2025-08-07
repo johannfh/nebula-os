@@ -22,6 +22,7 @@ pub fn load_font(filepath: &str) {
     // Load the font file from the specified path
     let sfs_handle =
         get_handle_for_protocol::<SimpleFileSystem>().expect("Failed to read font file");
+
     let mut sfs_proto = open_protocol_exclusive::<SimpleFileSystem>(sfs_handle)
         .expect("Failed to open Simple File System protocol");
 
