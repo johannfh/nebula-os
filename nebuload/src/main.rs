@@ -1,11 +1,11 @@
 #![no_std]
 #![no_main]
 
-mod fs;
+mod utils;
 
 use uefi::{Status, boot::get_handle_for_protocol, helpers, proto::console::text::Output};
 
-use crate::fs::read_file_from_esp;
+use crate::utils::read_file_from_esp;
 
 #[macro_use]
 extern crate alloc;
