@@ -4,127 +4,20 @@
 #[macro_use]
 extern crate alloc;
 
-use alloc::vec::Vec;
-use core::slice::IterMut;
-
 use log::info;
 use uefi::{
-    Handle, Result as UefiResult, Status,
+    Handle, Status,
     boot::{self, get_handle_for_protocol, open_protocol_exclusive, stall},
     helpers,
     proto::console::{
-        gop::{BltOp, BltPixel, BltRegion, GraphicsOutput},
+        gop::{BltPixel, GraphicsOutput},
         text::Input,
     },
 };
 
-struct Buffer {
-    width: usize,
-    height: usize,
-    pixels: Vec<BltPixel>,
-}
+use buffer::Buffer;
 
-impl Buffer {
-    fn new(width: usize, height: usize) -> Self {
-        let pixels = vec![BltPixel::new(0, 0, 0); width * height];
-        Buffer {
-            width,
-            height,
-            pixels,
-        }
-    }
-
-    fn pixel(&self, x: usize, y: usize) -> Option<&BltPixel> {
-        self.pixels.get(y * self.width + x)
-    }
-
-    fn pixel_mut(&mut self, x: usize, y: usize) -> Option<&mut BltPixel> {
-        self.pixels.get_mut(y * self.width + x)
-    }
-
-    fn blit(&mut self, gop: &mut GraphicsOutput) -> UefiResult {
-        gop.blt(BltOp::BufferToVideo {
-            buffer: &self.pixels,
-            src: BltRegion::Full,
-            dest: (0, 0),
-            dims: (self.width, self.height),
-        })
-    }
-
-    fn blit_pixel(&mut self, gop: &mut GraphicsOutput, coords: (usize, usize)) -> UefiResult {
-        gop.blt(BltOp::BufferToVideo {
-            buffer: &self.pixels,
-            src: BltRegion::SubRectangle {
-                coords,
-                px_stride: self.width,
-            },
-            dest: coords,
-            dims: (1, 1),
-        })
-    }
-
-    fn blit_region(
-        &mut self,
-        gop: &mut GraphicsOutput,
-        coords: (usize, usize),
-        dims: (usize, usize),
-    ) -> UefiResult {
-        gop.blt(BltOp::BufferToVideo {
-            buffer: &self.pixels,
-            src: BltRegion::SubRectangle {
-                coords,
-                px_stride: self.width,
-            },
-            dest: coords,
-            dims,
-        })
-    }
-}
-
-struct RegionIter<'a> {
-    // -- The buffer containing the pixels --
-    buffer: &'a [BltPixel],
-
-    // -- Dimensions of the buffer --
-    buffer_width: usize,
-    buffer_height: usize,
-
-    // -- Starting coordinates for the region --
-    start_x: usize,
-    start_y: usize,
-
-    // -- Dimensions of the region to iterate over --
-    width: usize,
-    height: usize,
-
-    // -- Current coordinates in the iteration --
-    x: usize,
-    y: usize,
-}
-
-impl<'a> Iterator for RegionIter<'a> {
-    type Item = &'a BltPixel;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // Check if the current position is within bounds
-        if self.x >= self.start_x + self.width || self.x > self.buffer_width {
-            self.x = self.start_x;
-            self.y += 1;
-        }
-
-        if self.y >= self.height {
-            return None; // No more pixels to iterate
-        }
-
-        // Get the pixel at the current position
-        let pixel = self.buffer.get(self.y * self.buffer_width + self.x);
-
-        // Move to the next pixel
-        self.x += 1;
-
-        pixel
-    }
-}
+mod buffer;
 
 #[uefi::entry]
 fn main() -> Status {
@@ -156,13 +49,22 @@ fn main() -> Status {
         .pixel_mut(0, 0)
         .expect("Failed to get top-left pixel");
     tl_pixel.red = 255; // Set red channel to 255
+
     buffer
         .blit_pixel(&mut gop, (0, 0))
         .expect("Failed to blit pixel at (0, 0)");
 
-    let coords = (50, 50);
-    let dims = (250, 250);
+    buffer
+        .draw_rect(&mut gop, (50, 50), (250, 250), BltPixel::new(0, 255, 0))
+        .expect("Failed to draw rectangle at (50, 50) with dimensions (250, 250)");
 
+    buffer.region_mut((100, 100), (50, 50)).for_each(|pixel| {
+        *pixel = BltPixel::new(255, 0, 0); // Set each pixel in the region to red
+    });
+
+    buffer
+        .blit(&mut gop)
+        .expect("Failed to blit modified region to video");
 
     // Stall for 10 seconds
     stall(10_000_000);
