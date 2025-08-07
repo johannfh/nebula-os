@@ -15,9 +15,7 @@ use uefi::{
     },
 };
 
-use buffer::Buffer;
-
-mod buffer;
+use nebula_uefi_graphics::screen::Screen;
 
 #[uefi::entry]
 fn main() -> Status {
@@ -40,29 +38,29 @@ fn main() -> Status {
         .expect("Failed to open Graphics Output protocol");
 
     let (width, height) = gop.current_mode_info().resolution();
-    let mut buffer = Buffer::new(width as usize, height as usize);
-    buffer
+    let mut screen = Screen::new(width as usize, height as usize);
+    screen
         .blit(&mut gop)
         .expect("Failed to blit buffer to video");
 
-    let tl_pixel = buffer
+    let tl_pixel = screen
         .pixel_mut(0, 0)
         .expect("Failed to get top-left pixel");
     tl_pixel.red = 255; // Set red channel to 255
 
-    buffer
+    screen
         .blit_pixel(&mut gop, (0, 0))
         .expect("Failed to blit pixel at (0, 0)");
 
-    buffer
+    screen
         .draw_rect(&mut gop, (50, 50), (250, 250), BltPixel::new(0, 255, 0))
         .expect("Failed to draw rectangle at (50, 50) with dimensions (250, 250)");
 
-    buffer.region_mut((100, 100), (50, 50)).for_each(|pixel| {
+    screen.region_mut((100, 100), (50, 50)).for_each(|pixel| {
         *pixel = BltPixel::new(255, 0, 0); // Set each pixel in the region to red
     });
 
-    buffer
+    screen
         .blit(&mut gop)
         .expect("Failed to blit modified region to video");
 

@@ -13,12 +13,30 @@ impl<T> Buffer<T>
 where
     T: Clone + Copy,
 {
+    /// Creates a new buffer with the specified width and height, filling it with the given value.
+    /// # Arguments
+    /// * `width` - The width of the buffer in pixels.
+    /// * `height` - The height of the buffer in pixels.
+    /// * `fill` - The value to fill the buffer with.
+    /// # Example
+    ///
+    /// ```
+    /// # use nebula_core::buffer::Buffer;
+    /// let buffer = Buffer::<u8>::new(10, 10, 0);
+    /// assert_eq!(buffer.width(), 10);
+    /// assert_eq!(buffer.height(), 10);
+    /// for y in 0..10 {
+    ///     for x in 0..10 {
+    ///         assert_eq!(*buffer.pixel(x, y).unwrap(), 0);
+    ///     }
+    /// }
+    /// ```
     pub fn new<F>(width: usize, height: usize, fill: F) -> Self
     where
         F: Into<T>,
     {
         let fill: T = fill.into();
-        let inner = vec![fill.clone(); width * height];
+        let inner = vec![fill; width * height];
         Buffer {
             width,
             height,
@@ -68,63 +86,86 @@ where
         self.height
     }
 
-    /* TODO: Abstract the following logic away into a super type / wrapper around GraphicsOutput
+    /// Resizes the buffer to the new dimensions, filling new pixels with the specified value.
+    /// /// # Arguments
+    /// * `new_width` - The new width of the buffer.
+    /// * `new_height` - The new height of the buffer.
+    /// * `fill` - The value to fill the new pixels with.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use nebula_core::buffer::Buffer;
+    /// let mut buffer = Buffer::<u8>::new(10, 10, 0);
+    /// buffer.resize(5, 5, 1);
+    /// assert_eq!(buffer.width(), 5);
+    /// assert_eq!(buffer.height(), 5);
+    /// for y in 0..5 {
+    ///     for x in 0..5 {
+    ///         assert_eq!(*buffer.pixel(x, y).unwrap(), 0);
+    ///     }
+    /// }
+    /// ```
+    pub fn resize(&mut self, new_width: usize, new_height: usize, fill: T) {
+        // Create a new buffer with the new dimensions
+        let mut new_inner = vec![fill; new_width * new_height];
 
-    #[inline]
-    pub fn blit(&mut self, gop: &mut GraphicsOutput) -> UefiResult {
-        gop.blt(BltOp::BufferToVideo {
-            buffer: &self.inner,
-            src: BltRegion::Full,
-            dest: (0, 0),
-            dims: (self.width, self.height),
-        })
+        // Copy the existing data into the new buffer
+        for y in 0..self.height.min(new_height) {
+            for x in 0..self.width.min(new_width) {
+                // Use value of same row or use fill value if out of bounds
+                let src_index = y * self.width + x;
+                let dst_index = y * new_width + x;
+                if src_index < self.inner.len() {
+                    new_inner[dst_index] = self.inner[src_index];
+                } else {
+                    new_inner[dst_index] = fill; // Fill value for out of bounds
+                }
+            }
+        }
+
+        // Update the width and height
+        self.width = new_width;
+        self.height = new_height;
+
+        // Replace the inner buffer with the new one
+        self.inner = new_inner;
     }
 
-    #[inline]
-    pub fn blit_pixel(&mut self, gop: &mut GraphicsOutput, coords: (usize, usize)) -> UefiResult {
-        gop.blt(BltOp::BufferToVideo {
-            buffer: &self.inner,
-            src: BltRegion::SubRectangle {
-                coords,
-                px_stride: self.width,
-            },
-            dest: coords,
-            dims: (1, 1),
-        })
+    /// Fills the entire buffer with the specified value.
+    ///
+    /// # Arguments
+    /// * `value` - The value to fill the buffer with.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use nebula_core::buffer::Buffer;
+    /// let mut buffer = Buffer::<u8>::new(10, 10, 0);
+    /// buffer.fill(5);
+    /// for y in 0..10 {
+    ///     for x in 0..10 {
+    ///         assert_eq!(*buffer.pixel(x, y).unwrap(), 5);
+    ///     }
+    /// }
+    /// ```
+    pub fn fill(&mut self, value: T) {
+        for item in &mut self.inner {
+            *item = value;
+        }
     }
+}
 
-    #[inline]
-    pub fn blit_region(
-        &mut self,
-        gop: &mut GraphicsOutput,
-        coords: (usize, usize),
-        dims: (usize, usize),
-    ) -> UefiResult {
-        gop.blt(BltOp::BufferToVideo {
-            buffer: &self.inner,
-            src: BltRegion::SubRectangle {
-                coords,
-                px_stride: self.width,
-            },
-            dest: coords,
-            dims,
-        })
+impl<T> AsRef<[T]> for Buffer<T> {
+    fn as_ref(&self) -> &[T] {
+        &self.inner
     }
+}
 
-    #[inline]
-    pub fn draw_rect(
-        &mut self,
-        gop: &mut GraphicsOutput,
-        coords: (usize, usize),
-        dims: (usize, usize),
-        color: BltPixel,
-    ) -> UefiResult {
-        self.region_mut(coords, dims).for_each(|pixel| {
-            *pixel = color;
-        });
-
-        self.blit(gop)
-    }*/
+impl<T> AsMut<[T]> for Buffer<T> {
+    fn as_mut(&mut self) -> &mut [T] {
+        &mut self.inner
+    }
 }
 
 pub struct RegionIterMut<'a, T> {
@@ -193,14 +234,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_buffer_creation() {
-        let buffer = Buffer::<u8>::new(10, 10, 0);
-        assert_eq!(buffer.width, 10);
-        assert_eq!(buffer.height, 10);
-        assert_eq!(buffer.inner.len(), 100);
-    }
-
-    #[test]
     fn test_pixel_access() {
         let mut buffer = Buffer::<u8>::new(10, 10, 0);
         *buffer.pixel_mut(5, 5).unwrap() = 42;
@@ -216,6 +249,21 @@ mod tests {
 
         for y in 2..5 {
             for x in 2..5 {
+                assert_eq!(*buffer.pixel(x, y).unwrap(), 1);
+            }
+        }
+    }
+
+    #[test]
+    fn test_resize_buffer() {
+        let mut buffer = Buffer::<u8>::new(10, 10, 0);
+        buffer.fill(1);
+        buffer.resize(5, 5, 0);
+        assert_eq!(buffer.width, 5);
+        assert_eq!(buffer.height, 5);
+        assert_eq!(buffer.inner.len(), 25);
+        for y in 0..5 {
+            for x in 0..5 {
                 assert_eq!(*buffer.pixel(x, y).unwrap(), 1);
             }
         }

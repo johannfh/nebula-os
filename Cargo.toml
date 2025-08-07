@@ -10,6 +10,14 @@ uefi = { version = "0.35.0", features = ["logger", "panic_handler"] }
 
 [workspace]
 members = [
+    # Core components
     "nebula_core",
+    "nebula_uefi_graphics",
+
+    # Bootloader
     "nebuload",
 ]
+
+[workspace.metadata.groups]
+# Core logic components that are isolated and unit testable
+core = ["pkg:nebula_core"]

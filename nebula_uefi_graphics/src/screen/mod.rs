@@ -1,0 +1,101 @@
+use core::ops::{Deref, DerefMut};
+
+use nebula_core::buffer::Buffer;
+
+use uefi::{
+    Result as UefiResult,
+    proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput},
+};
+
+pub struct Screen {
+    pub width: usize,
+    pub height: usize,
+    buffer: Buffer<BltPixel>,
+}
+
+impl Screen {
+    pub fn new(width: usize, height: usize) -> Self {
+        let buffer = Buffer::new(width, height, BltPixel::new(0, 0, 0));
+        Self {
+            width,
+            height,
+            buffer,
+        }
+    }
+
+    pub fn resize(&mut self, width: usize, height: usize) {
+        self.width = width;
+        self.height = height;
+        self.buffer.resize(width, height, BltPixel::new(0, 0, 0));
+    }
+
+    #[inline]
+    pub fn blit(&self, gop: &mut GraphicsOutput) -> UefiResult {
+        gop.blt(BltOp::BufferToVideo {
+            buffer: &self.buffer.as_ref(),
+            src: BltRegion::Full,
+            dest: (0, 0),
+            dims: (self.width, self.height),
+        })
+    }
+
+    #[inline]
+    pub fn blit_pixel(&self, gop: &mut GraphicsOutput, coords: (usize, usize)) -> UefiResult {
+        gop.blt(BltOp::BufferToVideo {
+            buffer: &self.buffer.as_ref(),
+            src: BltRegion::SubRectangle {
+                coords,
+                px_stride: self.width,
+            },
+            dest: coords,
+            dims: (1, 1),
+        })
+    }
+
+    #[inline]
+    pub fn blit_region(
+        &mut self,
+        gop: &mut GraphicsOutput,
+        coords: (usize, usize),
+        dims: (usize, usize),
+    ) -> UefiResult {
+        gop.blt(BltOp::BufferToVideo {
+            buffer: &self.buffer.as_ref(),
+            src: BltRegion::SubRectangle {
+                coords,
+                px_stride: self.width,
+            },
+            dest: coords,
+            dims,
+        })
+    }
+
+    #[inline]
+    pub fn draw_rect(
+        &mut self,
+        gop: &mut GraphicsOutput,
+        coords: (usize, usize),
+        dims: (usize, usize),
+        color: BltPixel,
+    ) -> UefiResult {
+        self.region_mut(coords, dims).for_each(|pixel| {
+            *pixel = color;
+        });
+
+        self.blit_region(gop, coords, dims)
+    }
+}
+
+impl Deref for Screen {
+    type Target = Buffer<BltPixel>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.buffer
+    }
+}
+
+impl DerefMut for Screen {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.buffer
+    }
+}

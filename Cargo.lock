@@ -39,10 +39,19 @@ name = "nebula_core"
 version = "0.1.0"
 
 [[package]]
+name = "nebula_uefi_graphics"
+version = "0.1.0"
+dependencies = [
+ "nebula_core",
+ "uefi",
+]
+
+[[package]]
 name = "nebuload"
 version = "0.1.0"
 dependencies = [
  "log",
+ "nebula_uefi_graphics",
  "uefi",
 ]
 

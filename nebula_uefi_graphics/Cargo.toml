@@ -1,0 +1,9 @@
+[package]
+name = "nebula_uefi_graphics"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nebula_core = { path = "../nebula_core" }
+uefi = "0.35.0"
+
