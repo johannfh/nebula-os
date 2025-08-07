@@ -27,11 +27,15 @@ fn main() -> Status {
 
     let otf_data = read_file_from_esp("\\fonts\\ajn-tanmatsuki\\ajn-tanmatsuki.otf");
     assert!(!otf_data.is_empty(), "Font file is empty");
+    log::info!(
+        "Successfully read font file from ESP, size: {} bytes",
+        otf_data.len()
+    );
 
-
-
-    // Stall for 30 seconds
-    uefi::boot::stall(30_000_000);
+    // Stall for 10 seconds
+    uefi::boot::stall(10_000_000);
+    log::info!("Shutting down...");
+    uefi::boot::stall(1_000_000);
 
     // Exit the application successfully!
     Status::SUCCESS
